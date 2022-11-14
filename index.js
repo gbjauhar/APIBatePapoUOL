@@ -112,10 +112,8 @@ app.post("/messages", async (req, res) => {
 
     const response = await collectionMessages.insertOne(message);
     res.sendStatus(201);
-    console.log(response);
   } catch (err) {
     res.sendStatus(422);
-    console.log(err);
   }
 });
 
@@ -197,7 +195,6 @@ function removeInactive() {
       const connected = (Date.now() - u.lastStatus) / 1000;
       if (connected > 10) {
         collectionPartipants.deleteOne({ name: u.name });
-        console.log("off", connected);
         collectionMessages.insertOne({
           from: u.name,
           to: "Todos",
@@ -205,8 +202,6 @@ function removeInactive() {
           type: "status",
           time: dayjs(Date.now()).format("HH:mm:ss"),
         });
-      } else {
-        console.log("on", connected);
       }
     });
   });
