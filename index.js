@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import joi from "joi";
 import dayjs from "dayjs";
 import pkg from "mongodb";
-const { MongoClient } = pkg;
+const { MongoClient, ObjectId } = pkg;
 
 const app = express();
 
@@ -12,6 +12,8 @@ const app = express();
 dotenv.config();
 app.use(express.json());
 app.use(cors());
+
+setInterval(removeInactive, 15000);
 
 //schemas
 const participantsSchema = joi.object({
@@ -68,9 +70,9 @@ app.post("/participants", async (req, res) => {
       type: "status",
       time: dayjs(Date.now()).format("HH:mm:ss"),
     });
-    res.status(201).send("ok");
+    res.sendStatus(201);
   } catch (err) {
-    res.status(422).send(err);
+    res.sendStatus(422);
   }
 });
 
@@ -89,10 +91,10 @@ app.post("/messages", async (req, res) => {
 
   try {
     const alreadySignUp = await collectionPartipants.findOne({ name: user });
-    /*  if (!alreadySignUp) {
-      res.status(422).send({message: "Usuário não registrado"});
+    if (!alreadySignUp) {
+      res.status(422).send({ message: "Usuário não registrado" });
       return;
-    } */
+    }
 
     const message = {
       from: user,
@@ -109,10 +111,10 @@ app.post("/messages", async (req, res) => {
     }
 
     const response = await collectionMessages.insertOne(message);
-    res.status(201).send({ message: "Mensagem enviada!" });
+    res.sendStatus(201);
     console.log(response);
   } catch (err) {
-    res.status(500).send(err);
+    res.sendStatus(422);
     console.log(err);
   }
 });
@@ -136,7 +138,7 @@ app.get("/messages", async (req, res) => {
           if (
             findMessages[i].from === findMessageForOneUser.name ||
             findMessages[i].to === "Todos" ||
-            findMessages[i].to === findMessageForOneUser.name            
+            findMessages[i].to === findMessageForOneUser.name
           ) {
             limitedMessages.unshift(findMessages[i]);
           }
@@ -144,9 +146,9 @@ app.get("/messages", async (req, res) => {
       }
       findMessages = limitedMessages;
     } else {
-     findMessages = findMessages.filter((m, i) => {
+      findMessages = findMessages.filter((m, i) => {
         if (
-            findMessages[i].from === findMessageForOneUser.name ||
+          findMessages[i].from === findMessageForOneUser.name ||
           findMessages[i].to === "Todos" ||
           findMessages[i].to === findMessageForOneUser.name
         ) {
@@ -170,10 +172,9 @@ app.post("/status", async (req, res) => {
       res.sendStatus(404);
       return;
     }
-    console.log(findParticipant.lastStatus);
     await collectionPartipants.updateOne(
       {
-        user: user,
+        name: user,
       },
       {
         $set: {
@@ -181,13 +182,12 @@ app.post("/status", async (req, res) => {
         },
       }
     );
-    return res.sendStatus(200);
+    res.sendStatus(200);
+    return;
   } catch (err) {
     res.status(404).send("erro");
   }
 });
-
-setInterval(removeInactive, 15000);
 
 function removeInactive() {
   const findParticipants = collectionPartipants.find().toArray();
@@ -197,7 +197,7 @@ function removeInactive() {
       const connected = (Date.now() - u.lastStatus) / 1000;
       if (connected > 10) {
         collectionPartipants.deleteOne({ name: u.name });
-
+        console.log("off", connected);
         collectionMessages.insertOne({
           from: u.name,
           to: "Todos",
@@ -205,10 +205,57 @@ function removeInactive() {
           type: "status",
           time: dayjs(Date.now()).format("HH:mm:ss"),
         });
+      } else {
+        console.log("on", connected);
       }
     });
   });
+  findParticipants.catch((err) => {
+    console.log(err.status);
+  });
 }
+
+app.delete("/messages/:id", async (req, res) => {
+  const { id } = req.params;
+  const { user } = req.headers;
+  try {
+    const message = await collectionMessages.findOne({ _id: ObjectId(id) });
+    if (user !== message.from) {
+      res.sendStatus(401);
+    }
+    if (!message) {
+      res.sendStatus(404);
+    }
+
+    await collectionMessages.deleteOne({ _id: ObjectId(id) });
+    res.status(200).send("Apagado");
+  } catch (err) {
+    res.sendStatus(500);
+  }
+});
+
+app.put("/messages/:id", async (req, res) => {
+  const { id } = req.params;
+  const { user } = req.headers;
+  try {
+    const message = await collectionMessages.findOne({ _id: ObjectId(id) });
+    if (user !== message.from) {
+      res.sendStatus(401);
+    }
+    if (!message) {
+      res.sendStatus(404);
+    }
+
+    await collectionMessages.updateOne(
+      { _id: ObjectId(id) },
+      { $set: req.body }
+    );
+    res.status(200).send("Apagado");
+  } catch (err) {
+    res.sendStatus(422);
+  }
+});
+
 app.listen(process.env.PORT, () =>
   console.log(`Server running in port: ${process.env.PORT}`)
 );
